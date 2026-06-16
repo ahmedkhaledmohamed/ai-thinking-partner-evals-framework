@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Post-write quality capture hook.
+# Receives JSON on stdin from Claude Code PostToolUse event.
 # Runs a structural eval on markdown files produced by skills.
 # Silent on success (score >= 0.6); prints a one-liner on low quality.
 
 set -euo pipefail
 
-FILE_PATH="${1:-}"
+FRAMEWORK_DIR="${AI_EVALS_FRAMEWORK_DIR:-/Users/ahmedm/Developer/ai-evals-framework}"
+
+# Read file_path from stdin JSON
+FILE_PATH=$(cat | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('file_path',''))" 2>/dev/null) || exit 0
 
 if [[ -z "$FILE_PATH" ]]; then
     exit 0
@@ -16,20 +20,18 @@ if [[ "$FILE_PATH" != *.md ]]; then
     exit 0
 fi
 
-# Check the file exists and has content
 if [[ ! -f "$FILE_PATH" ]]; then
     exit 0
 fi
 
-# Count words — skip files under 100 words
+# Skip files under 100 words
 WORD_COUNT=$(wc -w < "$FILE_PATH" | tr -d ' ')
 if [[ "$WORD_COUNT" -lt 100 ]]; then
     exit 0
 fi
 
-# Detect which skill likely produced this by checking section patterns
+# Detect skill from section patterns
 SKILL="unknown"
-
 if grep -qiE '(problem statement|proposed solution|success metrics|user value)' "$FILE_PATH"; then
     SKILL="product-brief"
 elif grep -qiE '(tl;dr|key metrics|risks|asks|next period)' "$FILE_PATH"; then
@@ -39,7 +41,6 @@ elif grep -qiE '(talking points|anticipated questions|preparation checklist)' "$
 fi
 
 # Run the structural check
-FRAMEWORK_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 RESULT=$(python3 -c "
 import sys, json
 sys.path.insert(0, '${FRAMEWORK_DIR}')
