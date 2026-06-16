@@ -109,8 +109,7 @@ class EvalRunner:
 
         text = path.read_text(encoding="utf-8", errors="replace")
 
-        # Auto-detect skill if unknown
-        if skill == "unknown":
+        if skill in ("unknown", "auto", ""):
             skill = self._detect_skill(text)
 
         required = SKILL_SECTIONS.get(skill, [])
@@ -226,7 +225,7 @@ class EvalRunner:
         text_lower = text.lower()
 
         # Score each skill by how many of its required sections appear
-        best_skill = "unknown"
+        best_skill = "general"
         best_count = 0
 
         for skill, sections in SKILL_SECTIONS.items():
@@ -235,11 +234,22 @@ class EvalRunner:
                 best_count = count
                 best_skill = skill
 
-        # Require at least 2 matching sections to claim a skill
-        if best_count < 2:
-            return "unknown"
+        if best_count >= 2:
+            return best_skill
 
-        return best_skill
+        # Fallback heuristics for docs that don't match a template
+        if re.search(r"(architecture|system design|service|api|grpc|protobuf|bigtable)", text_lower):
+            return "technical-analyst"
+        if re.search(r"(hypothesis|experiment|a/b test|control group|treatment)", text_lower):
+            return "data-analyst"
+        if re.search(r"(prototype|mockup|screen|phone frame|figma)", text_lower):
+            return "prototype"
+        if re.search(r"(strategy|vision|roadmap|mission|investment area)", text_lower):
+            return "strategic-clarity"
+        if re.search(r"(explore|brainstorm|trade-?off|option [a-c]|alternative)", text_lower):
+            return "thought-partner"
+
+        return "general"
 
     def _check_regression(self, skill: str, eval_name: str, current_score: float) -> bool:
         threshold_pct = self.config.get("thresholds", {}).get("regression_pct", 15)
