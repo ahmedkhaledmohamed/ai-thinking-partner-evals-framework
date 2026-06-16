@@ -67,7 +67,7 @@ You are an evaluation orchestrator. When the user provides an AI-generated artif
 python core/judge.py \
   --output path/to/artifact.md \
   --rubric plugin/rubrics/structured-doc.rubric.md \
-  --model claude-sonnet-4-20250514
+  --model claude-sonnet-4-6
 ```
 
 ```python

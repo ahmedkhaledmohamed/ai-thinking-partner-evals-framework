@@ -100,7 +100,7 @@ def judge(
     output: str,
     rubric_path: str | Path,
     context: dict | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-6",
 ) -> JudgeResult:
     """Run LLM-as-judge on an output.
 
@@ -213,7 +213,7 @@ def batch_judge(
         - 'output': str — the text to evaluate
         - 'context': dict (optional) — additional context for the judge
     """
-    model = model or "claude-sonnet-4-20250514"
+    model = model or "claude-sonnet-4-6"
     results = []
 
     for item in outputs:
@@ -307,6 +307,7 @@ def _execute_claude(
 ) -> str:
     """Run claude --print and return response text.
 
+    Pipes the prompt via stdin to avoid OS argument length limits.
     Uses --output-format json to get structured output from the CLI.
     Falls back to raw text if JSON parsing fails.
     """
@@ -315,7 +316,6 @@ def _execute_claude(
         "--print",
         "--output-format", "json",
         "--dangerously-skip-permissions",
-        "-p", prompt,
     ]
 
     if model:
@@ -324,6 +324,7 @@ def _execute_claude(
     try:
         proc = subprocess.run(
             cmd,
+            input=prompt,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -399,23 +400,24 @@ def _parse_judge_response(raw: str, rubric_weights: dict) -> JudgeResult:
                 weights=rubric_weights,
             )
 
-    # Extract dimension scores
+    # Extract dimension scores — match response keys to rubric dimension names.
+    # The judge often returns short names ("evidence") while rubric uses
+    # full names ("evidence_grounding"), so we match on prefix/substring.
     dimensions: dict[str, float] = {}
     for dim_key in rubric_weights:
-        # Try exact match, then common abbreviations
         val = data.get(dim_key)
         if val is None:
-            # Try without underscores (e.g., "intellectual_courage" -> check variations)
             for data_key in data:
-                if isinstance(data.get(data_key), (int, float)):
-                    normalized = data_key.lower().replace(" ", "_").replace("-", "_")
-                    if normalized == dim_key:
-                        val = data[data_key]
-                        break
+                if not isinstance(data.get(data_key), (int, float)):
+                    continue
+                normalized = data_key.lower().replace(" ", "_").replace("-", "_")
+                if normalized == dim_key or dim_key.startswith(normalized) or normalized.startswith(dim_key) or dim_key.endswith(normalized):
+                    val = data[data_key]
+                    break
         if val is not None:
             dimensions[dim_key] = max(0.0, min(1.0, float(val)))
         else:
-            dimensions[dim_key] = 0.0  # Missing dimension = 0
+            dimensions[dim_key] = 0.0
 
     # Extract weaknesses
     weaknesses = data.get("weaknesses", [])
@@ -620,7 +622,7 @@ def main():
     parser.add_argument("--output", type=str, help="File containing output to judge")
     parser.add_argument("--output-text", type=str, help="Raw text to judge (alternative to --output)")
     parser.add_argument("--rubric", type=str, required=True, help="Path to rubric markdown file")
-    parser.add_argument("--model", type=str, default="claude-sonnet-4-20250514", help="Judge model")
+    parser.add_argument("--model", type=str, default="claude-sonnet-4-6", help="Judge model")
     parser.add_argument("--context-json", type=str, help="Optional JSON context string")
     parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds")
 

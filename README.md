@@ -161,6 +161,10 @@ pipelines:
     freshness_hours: 24
 ```
 
+## Works With
+
+This framework evaluates outputs from the [PM AI Partner Framework](https://github.com/ahmedkhaledmohamed/PM-AI-Partner-Framework) — rubrics are calibrated against its skills (product-brief, stakeholder-update, devil-advocate, thought-partner, etc.). Install both for the full loop: AI generates work, evals measure quality, quality trends inform prompt/skill improvements.
+
 ## Contributing
 
 1. Fork and clone

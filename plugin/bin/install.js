@@ -138,7 +138,7 @@ function ensureDataDirs() {
       "version: 1",
       "",
       "# LLM judge model (used for Tier 2 evaluations)",
-      "judge_model: claude-sonnet-4-20250514",
+      "judge_model: claude-sonnet-4-6",
       "",
       "# Data directories",
       "results_dir: ~/.ai-evals/results",

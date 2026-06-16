@@ -6,7 +6,7 @@ import yaml
 
 DEFAULT_CONFIG = {
     "version": 1,
-    "judge_model": "claude-sonnet-4-20250514",
+    "judge_model": "claude-sonnet-4-6",
     "results_dir": "~/.ai-evals/results",
     "golden_dir": "~/.ai-evals/golden",
     "feedback_dir": "~/.ai-evals/feedback",
