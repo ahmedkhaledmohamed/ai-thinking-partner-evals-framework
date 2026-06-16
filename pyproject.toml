@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "ai-evals"
+version = "1.0.0"
+description = "Continuous evaluation framework for AI agent ecosystems"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{name = "Ahmed Khaled Mohamed", email = "ahmedm@spotify.com"}]
+dependencies = ["pyyaml>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/ahmedkhaledmohamed/ai-evals-framework"
+
+[tool.setuptools.packages.find]
+include = ["core*"]

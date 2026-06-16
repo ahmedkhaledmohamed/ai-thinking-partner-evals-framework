@@ -1,0 +1,11 @@
+{
+  "name": "@ahmedm/ai-evals",
+  "version": "1.0.0",
+  "description": "AI Evals Framework -- Continuous evaluation for AI agent ecosystems",
+  "private": true,
+  "author": "Ahmed Khaled Mohamed <ahmedm@spotify.com>",
+  "license": "MIT",
+  "scripts": {
+    "install-plugin": "node bin/install.js"
+  }
+}

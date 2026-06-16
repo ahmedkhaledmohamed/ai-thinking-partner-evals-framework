@@ -1,0 +1,16 @@
+{
+  "hooks": [
+    {
+      "matcher": {"tool": "Write|Edit", "path": "product-catalog/**|sandbox/**"},
+      "event": "PostToolUse",
+      "command": "python3 ~/.ai-evals/hooks/post-write-eval.py \"$TOOL_INPUT_PATH\"",
+      "timeout": 15
+    },
+    {
+      "matcher": {"tool": "Bash", "command": "git commit"},
+      "event": "PostToolUse",
+      "command": "python3 ~/.ai-evals/hooks/post-commit-eval.py",
+      "timeout": 30
+    }
+  ]
+}

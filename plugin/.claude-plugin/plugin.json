@@ -1,0 +1,19 @@
+{
+  "name": "ai-evals",
+  "version": "1.0.0",
+  "description": "Continuous evaluation framework for AI agent ecosystems. Scores skills, pipelines, and outputs with automated checks + LLM-as-judge rubrics.",
+  "author": {
+    "name": "Ahmed Khaled Mohamed",
+    "url": "https://github.com/ahmedkhaledmohamed"
+  },
+  "skills": [
+    "skills/eval-runner",
+    "skills/eval-reporter",
+    "skills/eval-judge",
+    "skills/eval-feedback"
+  ],
+  "commands": [
+    "commands/eval"
+  ],
+  "hooks": "hooks/hooks.json"
+}
