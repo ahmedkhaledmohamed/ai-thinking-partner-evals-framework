@@ -109,8 +109,7 @@ class EvalRunner:
 
         text = path.read_text(encoding="utf-8", errors="replace")
 
-        # Auto-detect skill if unknown
-        if skill == "unknown":
+        if skill in ("unknown", "auto", ""):
             skill = self._detect_skill(text)
 
         required = SKILL_SECTIONS.get(skill, [])
@@ -126,8 +125,7 @@ class EvalRunner:
         if required:
             base_score = sum(section_scores.values()) / len(required)
         else:
-            # No known template — give partial credit based on general structure
-            base_score = min(len(headings) / 4, 1.0)  # At least 4 headings = 1.0
+            base_score = self._score_general_structure(text, headings)
 
         # Bonus for quality markers
         bonus = 0.0
@@ -223,23 +221,72 @@ class EvalRunner:
         return headings
 
     def _detect_skill(self, text: str) -> str:
-        text_lower = text.lower()
+        headings = self._extract_headings(text)
+        heading_lower = {h.lower() for h in headings}
 
-        # Score each skill by how many of its required sections appear
-        best_skill = "unknown"
+        best_skill = "general"
         best_count = 0
 
         for skill, sections in SKILL_SECTIONS.items():
-            count = sum(1 for s in sections if s.lower() in text_lower)
+            count = sum(1 for s in sections if s.lower() in heading_lower)
             if count > best_count:
                 best_count = count
                 best_skill = skill
 
-        # Require at least 2 matching sections to claim a skill
-        if best_count < 2:
-            return "unknown"
+        if best_count >= 3:
+            return best_skill
 
-        return best_skill
+        text_lower = text.lower()
+        if re.search(r"(architecture|system design|service|api|grpc|protobuf|bigtable)", text_lower):
+            return "technical-analyst"
+        if re.search(r"(hypothesis|experiment|a/b test|control group|treatment)", text_lower):
+            return "data-analyst"
+        if re.search(r"(prototype|mockup|screen|phone frame|figma)", text_lower):
+            return "prototype"
+        if re.search(r"(strategy|vision|roadmap|mission|investment area)", text_lower):
+            return "strategic-clarity"
+        if re.search(r"(explore|brainstorm|trade-?off|option [a-c]|alternative)", text_lower):
+            return "thought-partner"
+
+        return "general"
+
+    def _score_general_structure(self, text: str, headings: list[str]) -> float:
+        """Score docs that don't match any skill template based on structural quality."""
+        score = 0.0
+        lines = text.splitlines()
+
+        # Heading presence (0-0.3): reward having headings, diminishing returns
+        h_score = min(len(headings) / 6, 1.0) * 0.3
+        score += h_score
+
+        # Heading hierarchy (0-0.2): reward H1 → H2 → H3 depth
+        levels = set()
+        for line in lines:
+            m = re.match(r"^(#{1,6})\s", line.strip())
+            if m:
+                levels.add(len(m.group(1)))
+        hierarchy_score = min(len(levels) / 3, 1.0) * 0.2
+        score += hierarchy_score
+
+        # Content depth (0-0.25): average words per section (split on headings)
+        sections = re.split(r"^#{1,6}\s", text, flags=re.MULTILINE)
+        section_lengths = [len(s.split()) for s in sections if len(s.split()) > 10]
+        if section_lengths:
+            avg_words = sum(section_lengths) / len(section_lengths)
+            depth_score = min(avg_words / 100, 1.0) * 0.25
+        else:
+            depth_score = 0.1
+        score += depth_score
+
+        # Content markers (0-0.25): tables, lists, code blocks
+        has_table = bool(re.search(r"^\|.+\|.+\|", text, re.MULTILINE))
+        has_list = bool(re.search(r"^[\s]*[-*]\s", text, re.MULTILINE))
+        has_code = bool(re.search(r"```", text))
+        marker_count = sum([has_table, has_list, has_code])
+        marker_score = min(marker_count / 2, 1.0) * 0.25
+        score += marker_score
+
+        return round(min(score, 1.0), 3)
 
     def _check_regression(self, skill: str, eval_name: str, current_score: float) -> bool:
         threshold_pct = self.config.get("thresholds", {}).get("regression_pct", 15)

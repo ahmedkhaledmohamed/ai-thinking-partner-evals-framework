@@ -2,7 +2,7 @@
 # Post-write quality capture hook.
 # Receives JSON on stdin from Claude Code PostToolUse event.
 # Runs a structural eval on markdown files produced by skills.
-# Silent on success (score >= 0.6); prints a one-liner on low quality.
+# Silent on success (score >= 0.6); shows missing sections on low quality.
 
 set -euo pipefail
 
@@ -11,50 +11,35 @@ FRAMEWORK_DIR="${AI_EVALS_FRAMEWORK_DIR:-/Users/ahmedm/Developer/ai-evals-framew
 # Read file_path from stdin JSON
 FILE_PATH=$(cat | python3 -c "import sys,json; print(json.load(sys.stdin).get('tool_input',{}).get('file_path',''))" 2>/dev/null) || exit 0
 
-if [[ -z "$FILE_PATH" ]]; then
-    exit 0
-fi
+if [[ -z "$FILE_PATH" ]]; then exit 0; fi
+if [[ "$FILE_PATH" != *.md ]]; then exit 0; fi
+if [[ ! -f "$FILE_PATH" ]]; then exit 0; fi
 
-# Only evaluate markdown files
-if [[ "$FILE_PATH" != *.md ]]; then
-    exit 0
-fi
-
-if [[ ! -f "$FILE_PATH" ]]; then
-    exit 0
-fi
-
-# Skip files under 100 words
 WORD_COUNT=$(wc -w < "$FILE_PATH" | tr -d ' ')
-if [[ "$WORD_COUNT" -lt 100 ]]; then
-    exit 0
-fi
+if [[ "$WORD_COUNT" -lt 100 ]]; then exit 0; fi
 
-# Detect skill from section patterns
-SKILL="unknown"
-if grep -qiE '(problem statement|proposed solution|success metrics|user value)' "$FILE_PATH"; then
-    SKILL="product-brief"
-elif grep -qiE '(tl;dr|key metrics|risks|asks|next period)' "$FILE_PATH"; then
-    SKILL="stakeholder-update"
-elif grep -qiE '(talking points|anticipated questions|preparation checklist)' "$FILE_PATH"; then
-    SKILL="meeting-prep"
-fi
-
-# Run the structural check
+# Let the eval engine detect the skill (don't duplicate detection here)
 RESULT=$(python3 -c "
 import sys, json
 sys.path.insert(0, '${FRAMEWORK_DIR}')
-from core.eval_engine import EvalRunner
+from core.eval_engine import EvalRunner, SKILL_SECTIONS
 runner = EvalRunner()
-result = runner.run_structural_check('${FILE_PATH}', '${SKILL}')
+result = runner.run_structural_check('${FILE_PATH}', 'auto')
 runner.append_result(result)
-print(json.dumps({'score': result.overall_score, 'eval_name': result.eval_name, 'skill': result.skill}))
+missing = []
+if result.skill in SKILL_SECTIONS:
+    missing = [k for k, v in result.scores.items() if not k.startswith('bonus_') and v == 0.0]
+print(json.dumps({
+    'score': result.overall_score,
+    'skill': result.skill,
+    'missing': missing[:4],
+}))
 " 2>/dev/null) || exit 0
 
 SCORE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['score'])" 2>/dev/null) || exit 0
 
-# Only print if score is below threshold
 if python3 -c "exit(0 if $SCORE < 0.6 else 1)" 2>/dev/null; then
-    EVAL_NAME=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['eval_name'])" 2>/dev/null)
-    echo "[eval] ${EVAL_NAME}: score=${SCORE} (below 0.6 threshold) — ${FILE_PATH}"
+    SKILL=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['skill'])" 2>/dev/null)
+    MISSING=$(echo "$RESULT" | python3 -c "import sys,json; m=json.load(sys.stdin)['missing']; print(', '.join(m) if m else 'general structure')" 2>/dev/null)
+    echo "[eval] ${SKILL}: ${SCORE} — missing: ${MISSING}"
 fi

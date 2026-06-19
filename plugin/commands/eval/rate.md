@@ -1,7 +1,7 @@
 ---
 name: eval:rate
 description: Multi-level quality rating (PR, day, week)
-argument-hint: [pr|day|week]
+argument-hint: [pr|day|week] [YYYY-MM-DD]
 ---
 
 # /eval:rate
@@ -11,7 +11,10 @@ Rate AI output quality at different granularity levels.
 ## Usage
 - `/eval:rate pr` — evaluate all artifacts in the current PR/last commit
 - `/eval:rate day` — aggregate today's work quality
+- `/eval:rate day 2026-06-17` — aggregate a specific day
+- `/eval:rate day yesterday` — shorthand for the previous day
 - `/eval:rate week` — weekly quality summary with trends
+- `/eval:rate week 2026-06-09` — week ending on a specific date
 
 ## Instructions
 
@@ -38,7 +41,14 @@ Rate AI output quality at different granularity levels.
 5. Store result at `~/.ai-evals/reports/pr/{repo}_{commit-sha}.md`
 
 ### Day Level
-1. Load all JSONL entries from today: `~/.ai-evals/results/YYYY-MM-DD.jsonl`
+
+**Date resolution:** Parse the optional date argument:
+- No date → today's date
+- `yesterday` → subtract 1 day from today
+- `YYYY-MM-DD` → use as-is
+- Relative like `2 days ago` → subtract N days from today
+
+1. Load all JSONL entries for the target date: `~/.ai-evals/results/YYYY-MM-DD.jsonl`
 2. Compute daily APQS (AI Product Quality Score):
    - Weighted composite across categories using weights from `core/config.py`
    - structured_docs: 0.20, reasoning: 0.15, data_analytics: 0.15

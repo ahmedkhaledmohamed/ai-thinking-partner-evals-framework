@@ -120,25 +120,44 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
     if any(x in filename.lower() for x in ["plan", "memory", "claude.md", "skill.md", "config"]):
         return None
 
-    # Detect skill from content
-    skill = "unknown"
-    content_lower = content.lower()
-    for skill_name, sections in SKILL_SECTIONS.items():
-        matches = sum(1 for s in sections if s.lower() in content_lower)
-        if matches >= len(sections) * 0.4:
-            skill = skill_name
-            break
-
-    # Run structural check inline (can't use file path since content is from transcript)
+    # Detect skill from headings (not body text — avoids false positives)
     headings = re.findall(r"^#{1,3}\s+(.+)$", content, re.MULTILINE)
     heading_texts = [h.strip().lower() for h in headings]
+
+    skill = "general"
+    best_count = 0
+    for skill_name, sections in SKILL_SECTIONS.items():
+        count = sum(1 for s in sections if s.lower() in heading_texts)
+        if count > best_count:
+            best_count = count
+            skill = skill_name
+    if best_count < 3:
+        content_lower = content.lower()
+        if re.search(r"(architecture|system design|service|api|grpc|protobuf|bigtable)", content_lower):
+            skill = "technical-analyst"
+        elif re.search(r"(hypothesis|experiment|a/b test|control group|treatment)", content_lower):
+            skill = "data-analyst"
+        elif re.search(r"(prototype|mockup|screen|phone frame|figma)", content_lower):
+            skill = "prototype"
+        elif re.search(r"(strategy|vision|roadmap|mission|investment area)", content_lower):
+            skill = "strategic-clarity"
+        else:
+            skill = "general"
 
     if skill in SKILL_SECTIONS:
         required = SKILL_SECTIONS[skill]
         found = sum(1 for req in required if any(req.lower() in h for h in heading_texts))
         section_score = found / len(required)
     else:
-        section_score = min(len(headings) / 4, 1.0) if headings else 0.5
+        # Structural quality scoring for general docs
+        levels = set()
+        for h in re.findall(r"^(#{1,6})\s", content, re.MULTILINE):
+            levels.add(len(h))
+        hierarchy = min(len(levels) / 3, 1.0) * 0.3
+        h_presence = min(len(headings) / 6, 1.0) * 0.3
+        has_table = 0.2 if re.search(r"^\|.+\|.+\|", content, re.MULTILINE) else 0.0
+        has_list = 0.2 if re.search(r"^[\s]*[-*]\s", content, re.MULTILINE) else 0.0
+        section_score = min(hierarchy + h_presence + has_table + has_list, 1.0)
 
     # Bonus scoring
     bonus = 0.0
@@ -220,7 +239,10 @@ def eval_conversation_quality(session: dict) -> EvalResult | None:
     }
     overall = sum(scores[k] * weights[k] for k in weights)
 
-    skills = session["skills_used"]
+    COMMAND_NOISE = {"eval:rate", "eval:run", "eval:check", "eval:pipeline",
+                     "eval:report", "eval:regression", "eval:calibrate", "eval:improve",
+                     "loop", "update-config", "impact-log:impact-log", "schedule"}
+    skills = [s for s in session["skills_used"] if s not in COMMAND_NOISE and ":" not in s]
     primary_skill = max(set(skills), key=skills.count) if skills else "conversation"
 
     return EvalResult(
