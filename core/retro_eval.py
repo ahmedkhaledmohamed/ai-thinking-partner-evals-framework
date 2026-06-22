@@ -120,6 +120,11 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
     if any(x in filename.lower() for x in ["plan", "memory", "claude.md", "skill.md", "config"]):
         return None
 
+    # Skip HTML-heavy content (prototypes, presentations)
+    html_tags = len(re.findall(r"<[a-z][^>]*>", content, re.IGNORECASE))
+    if html_tags / max(word_count, 1) > 0.15 or content.strip().startswith("<!DOCTYPE"):
+        return None
+
     # Detect skill from headings (not body text — avoids false positives)
     headings = re.findall(r"^#{1,3}\s+(.+)$", content, re.MULTILINE)
     heading_texts = [h.strip().lower() for h in headings]
@@ -139,7 +144,7 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
             skill = "data-analyst"
         elif re.search(r"(prototype|mockup|screen|phone frame|figma)", content_lower):
             skill = "prototype"
-        elif re.search(r"(strategy|vision|roadmap|mission|investment area)", content_lower):
+        elif re.search(r"(team identity|what we own|boundaries|team charter|capability audit)", content_lower):
             skill = "strategic-clarity"
         else:
             skill = "general"

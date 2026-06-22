@@ -272,24 +272,36 @@ def generate_weekly_report(end_date: str, results_dir: str | None = None) -> str
             lines.append(f"| {cat} | {info['count']} | {info['avg']:.2f} | {tl} |")
         lines.append("")
 
-    # Regressions
+    # Regressions — aggregate by skill instead of listing each eval
     regressions = [r for r in scored_all if r.regression]
     lines.append("## Regressions This Week")
     lines.append("")
     if regressions:
+        reg_by_skill: dict[str, list] = {}
         for r in regressions:
-            lines.append(f"- **{r.skill}** / {r.eval_name}: {r.overall_score:.2f} ({r.timestamp[:10]})")
+            reg_by_skill.setdefault(r.skill, []).append(r.overall_score)
+        lines.append("| Skill | Count | Avg Score | Worst |")
+        lines.append("|-------|-------|-----------|-------|")
+        for skill in sorted(reg_by_skill, key=lambda s: mean(reg_by_skill[s])):
+            scores = reg_by_skill[skill]
+            lines.append(f"| {skill} | {len(scores)} | {mean(scores):.2f} | {min(scores):.2f} |")
     else:
         lines.append("No regressions detected.")
     lines.append("")
 
-    # Improvements (score > 0.9)
+    # Improvements — aggregate by skill instead of listing each eval
     improvements = [r for r in scored_all if r.overall_score > 0.9 and not r.regression]
     lines.append("## Improvements This Week")
     lines.append("")
     if improvements:
+        imp_by_skill: dict[str, list] = {}
         for r in improvements:
-            lines.append(f"- **{r.skill}** / {r.eval_name}: {r.overall_score:.2f} ({r.timestamp[:10]})")
+            imp_by_skill.setdefault(r.skill, []).append(r.overall_score)
+        lines.append("| Skill | Count | Avg Score |")
+        lines.append("|-------|-------|-----------|")
+        for skill in sorted(imp_by_skill, key=lambda s: -mean(imp_by_skill[s])):
+            scores = imp_by_skill[skill]
+            lines.append(f"| {skill} | {len(scores)} | {mean(scores):.2f} |")
     else:
         lines.append("No standout improvements (>0.9) this week.")
     lines.append("")
