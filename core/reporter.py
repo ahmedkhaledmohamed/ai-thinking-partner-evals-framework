@@ -160,12 +160,18 @@ def generate_daily_report(date: str, results_dir: str | None = None) -> str:
         lines.append(f"**Worst**: {worst.input_summary or worst.eval_name} scored {worst.overall_score:.2f} on {worst.skill}")
         lines.append("")
 
-    # Regressions
+    # Regressions — aggregate by skill
     if regressions:
         lines.append("## Regressions")
         lines.append("")
+        reg_by_skill: dict[str, list[float]] = {}
         for r in regressions:
-            lines.append(f"- **{r.skill}** / {r.eval_name}: {r.overall_score:.2f}")
+            reg_by_skill.setdefault(r.skill, []).append(r.overall_score)
+        lines.append("| Skill | Count | Avg Score | Worst |")
+        lines.append("|-------|-------|-----------|-------|")
+        for skill in sorted(reg_by_skill, key=lambda s: mean(reg_by_skill[s])):
+            scores = reg_by_skill[skill]
+            lines.append(f"| {skill} | {len(scores)} | {mean(scores):.2f} | {min(scores):.2f} |")
         lines.append("")
 
     # Skill usage
