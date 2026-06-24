@@ -191,6 +191,9 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
         is_config = any(d in path_lower for d in ["/memory/", "/commands/", "/skills/", "/.claude/"])
         skill = "artifact" if is_polished and not is_config else "draft"
 
+    if skill == "artifact" and word_count < 200:
+        return None
+
     # Bonus scoring
     bonus = 0.0
     for name, pattern in BONUS_PATTERNS.items():
