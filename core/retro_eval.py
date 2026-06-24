@@ -162,7 +162,21 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
         h_presence = min(len(headings) / 6, 1.0) * 0.3
         has_table = 0.2 if re.search(r"^\|.+\|.+\|", content, re.MULTILINE) else 0.0
         has_list = 0.2 if re.search(r"^[\s]*[-*]\s", content, re.MULTILINE) else 0.0
-        section_score = min(hierarchy + h_presence + has_table + has_list, 1.0)
+        raw_structural = min(hierarchy + h_presence + has_table + has_list, 1.0)
+
+        # Classify artifact maturity by path
+        path_lower = artifact["path"].lower()
+        is_draft = any(d in path_lower for d in ["sandbox", "planning", "context", "session-state", ".claude/plans"])
+        if is_draft:
+            section_score = 0.5 + (raw_structural * 0.5)
+        else:
+            section_score = raw_structural
+
+    # Label general docs by maturity
+    if skill == "general":
+        path_lower = artifact["path"].lower()
+        is_draft = any(d in path_lower for d in ["sandbox", "planning", "context", "session-state", ".claude/plans"])
+        skill = "draft" if is_draft else "artifact"
 
     # Bonus scoring
     bonus = 0.0
