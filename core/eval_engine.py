@@ -298,14 +298,28 @@ class EvalRunner:
 
     def _score_general_structure(self, text: str, headings: list[str]) -> float:
         """Score docs that don't match any skill template based on structural quality."""
-        score = 0.0
         lines = text.splitlines()
 
-        # Heading presence (0-0.3): reward having headings, diminishing returns
+        # Check if this is a table-heavy reference doc
+        table_rows = len(re.findall(r"^\|.+\|", text, re.MULTILINE))
+        total_lines = len([l for l in lines if l.strip()])
+        table_ratio = table_rows / max(total_lines, 1)
+
+        if table_rows >= 5 and table_ratio > 0.3:
+            # Table-heavy doc — score based on table structure instead of headings
+            table_score = min(table_rows / 10, 1.0) * 0.4
+            h_score = min(len(headings) / 3, 1.0) * 0.2
+            has_list = 0.1 if re.search(r"^[\s]*[-*]\s", text, re.MULTILINE) else 0.0
+            has_metadata = 0.15 if re.search(r"\*\*.*\*\*.*:", text) else 0.0
+            depth = min(len(text.split()) / 200, 1.0) * 0.15
+            return round(min(table_score + h_score + has_list + has_metadata + depth, 1.0), 3)
+
+        # Standard structural scoring for prose docs
+        score = 0.0
+
         h_score = min(len(headings) / 6, 1.0) * 0.3
         score += h_score
 
-        # Heading hierarchy (0-0.2): reward H1 → H2 → H3 depth
         levels = set()
         for line in lines:
             m = re.match(r"^(#{1,6})\s", line.strip())
@@ -314,7 +328,6 @@ class EvalRunner:
         hierarchy_score = min(len(levels) / 3, 1.0) * 0.2
         score += hierarchy_score
 
-        # Content depth (0-0.25): average words per section (split on headings)
         sections = re.split(r"^#{1,6}\s", text, flags=re.MULTILINE)
         section_lengths = [len(s.split()) for s in sections if len(s.split()) > 10]
         if section_lengths:
@@ -324,7 +337,6 @@ class EvalRunner:
             depth_score = 0.1
         score += depth_score
 
-        # Content markers (0-0.25): tables, lists, code blocks
         has_table = bool(re.search(r"^\|.+\|.+\|", text, re.MULTILINE))
         has_list = bool(re.search(r"^[\s]*[-*]\s", text, re.MULTILINE))
         has_code = bool(re.search(r"```", text))

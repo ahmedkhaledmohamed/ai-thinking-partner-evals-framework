@@ -154,15 +154,27 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
         found = sum(1 for req in required if any(req.lower() in h for h in heading_texts))
         section_score = found / len(required)
     else:
-        # Structural quality scoring for general docs
-        levels = set()
-        for h in re.findall(r"^(#{1,6})\s", content, re.MULTILINE):
-            levels.add(len(h))
-        hierarchy = min(len(levels) / 3, 1.0) * 0.3
-        h_presence = min(len(headings) / 6, 1.0) * 0.3
-        has_table = 0.2 if re.search(r"^\|.+\|.+\|", content, re.MULTILINE) else 0.0
-        has_list = 0.2 if re.search(r"^[\s]*[-*]\s", content, re.MULTILINE) else 0.0
-        raw_structural = min(hierarchy + h_presence + has_table + has_list, 1.0)
+        # Check for table-heavy reference docs
+        table_rows = len(re.findall(r"^\|.+\|", content, re.MULTILINE))
+        total_lines = len([l for l in content.splitlines() if l.strip()])
+        table_ratio = table_rows / max(total_lines, 1)
+
+        if table_rows >= 5 and table_ratio > 0.3:
+            t_score = min(table_rows / 10, 1.0) * 0.4
+            h_score = min(len(headings) / 3, 1.0) * 0.2
+            has_list_s = 0.1 if re.search(r"^[\s]*[-*]\s", content, re.MULTILINE) else 0.0
+            has_meta = 0.15 if re.search(r"\*\*.*\*\*.*:", content) else 0.0
+            depth = min(word_count / 200, 1.0) * 0.15
+            raw_structural = min(t_score + h_score + has_list_s + has_meta + depth, 1.0)
+        else:
+            levels = set()
+            for h in re.findall(r"^(#{1,6})\s", content, re.MULTILINE):
+                levels.add(len(h))
+            hierarchy = min(len(levels) / 3, 1.0) * 0.3
+            h_presence = min(len(headings) / 6, 1.0) * 0.3
+            has_table = 0.2 if re.search(r"^\|.+\|.+\|", content, re.MULTILINE) else 0.0
+            has_list = 0.2 if re.search(r"^[\s]*[-*]\s", content, re.MULTILINE) else 0.0
+            raw_structural = min(hierarchy + h_presence + has_table + has_list, 1.0)
 
         # Classify artifact maturity by path
         path_lower = artifact["path"].lower()
