@@ -111,8 +111,11 @@ def _skill_averages(results: list[EvalResult]) -> dict[str, dict]:
 def generate_daily_report(date: str, results_dir: str | None = None) -> str:
     """Generate markdown report for a single day.
 
-    Load JSONL for the date, compute category averages, identify best/worst.
+    Syncs unevaluated sessions for the target date first, then generates.
     """
+    from core.retro_eval import sync_date
+    sync_date(date)
+
     config = load_config()
     if results_dir:
         config["results_dir"] = results_dir
@@ -160,12 +163,18 @@ def generate_daily_report(date: str, results_dir: str | None = None) -> str:
         lines.append(f"**Worst**: {worst.input_summary or worst.eval_name} scored {worst.overall_score:.2f} on {worst.skill}")
         lines.append("")
 
-    # Regressions
+    # Regressions — aggregate by skill
     if regressions:
         lines.append("## Regressions")
         lines.append("")
+        reg_by_skill: dict[str, list[float]] = {}
         for r in regressions:
-            lines.append(f"- **{r.skill}** / {r.eval_name}: {r.overall_score:.2f}")
+            reg_by_skill.setdefault(r.skill, []).append(r.overall_score)
+        lines.append("| Skill | Count | Avg Score | Worst |")
+        lines.append("|-------|-------|-----------|-------|")
+        for skill in sorted(reg_by_skill, key=lambda s: mean(reg_by_skill[s])):
+            scores = reg_by_skill[skill]
+            lines.append(f"| {skill} | {len(scores)} | {mean(scores):.2f} | {min(scores):.2f} |")
         lines.append("")
 
     # Skill usage
@@ -199,14 +208,20 @@ def generate_daily_report(date: str, results_dir: str | None = None) -> str:
 def generate_weekly_report(end_date: str, results_dir: str | None = None) -> str:
     """Generate weekly rollup. 7 daily reports aggregated.
 
-    Includes APQS trend (7 daily scores), regression alerts, improvements.
+    Syncs unevaluated sessions for each day in the window first.
     """
+    from core.retro_eval import sync_date
+
     config = load_config()
     if results_dir:
         config["results_dir"] = results_dir
 
     end = datetime.strptime(end_date, "%Y-%m-%d")
     start = end - timedelta(days=6)
+
+    for i in range(7):
+        day = (start + timedelta(days=i)).strftime("%Y-%m-%d")
+        sync_date(day)
 
     lines: list[str] = []
     lines.append(f"# Weekly AI Quality Report -- Week of {start.strftime('%Y-%m-%d')}")
@@ -272,24 +287,36 @@ def generate_weekly_report(end_date: str, results_dir: str | None = None) -> str
             lines.append(f"| {cat} | {info['count']} | {info['avg']:.2f} | {tl} |")
         lines.append("")
 
-    # Regressions
+    # Regressions — aggregate by skill instead of listing each eval
     regressions = [r for r in scored_all if r.regression]
     lines.append("## Regressions This Week")
     lines.append("")
     if regressions:
+        reg_by_skill: dict[str, list] = {}
         for r in regressions:
-            lines.append(f"- **{r.skill}** / {r.eval_name}: {r.overall_score:.2f} ({r.timestamp[:10]})")
+            reg_by_skill.setdefault(r.skill, []).append(r.overall_score)
+        lines.append("| Skill | Count | Avg Score | Worst |")
+        lines.append("|-------|-------|-----------|-------|")
+        for skill in sorted(reg_by_skill, key=lambda s: mean(reg_by_skill[s])):
+            scores = reg_by_skill[skill]
+            lines.append(f"| {skill} | {len(scores)} | {mean(scores):.2f} | {min(scores):.2f} |")
     else:
         lines.append("No regressions detected.")
     lines.append("")
 
-    # Improvements (score > 0.9)
+    # Improvements — aggregate by skill instead of listing each eval
     improvements = [r for r in scored_all if r.overall_score > 0.9 and not r.regression]
     lines.append("## Improvements This Week")
     lines.append("")
     if improvements:
+        imp_by_skill: dict[str, list] = {}
         for r in improvements:
-            lines.append(f"- **{r.skill}** / {r.eval_name}: {r.overall_score:.2f} ({r.timestamp[:10]})")
+            imp_by_skill.setdefault(r.skill, []).append(r.overall_score)
+        lines.append("| Skill | Count | Avg Score |")
+        lines.append("|-------|-------|-----------|")
+        for skill in sorted(imp_by_skill, key=lambda s: -mean(imp_by_skill[s])):
+            scores = imp_by_skill[skill]
+            lines.append(f"| {skill} | {len(scores)} | {mean(scores):.2f} |")
     else:
         lines.append("No standout improvements (>0.9) this week.")
     lines.append("")

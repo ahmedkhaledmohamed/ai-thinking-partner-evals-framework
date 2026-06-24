@@ -120,6 +120,11 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
     if any(x in filename.lower() for x in ["plan", "memory", "claude.md", "skill.md", "config"]):
         return None
 
+    # Skip HTML-heavy content (prototypes, presentations)
+    html_tags = len(re.findall(r"<[a-z][^>]*>", content, re.IGNORECASE))
+    if html_tags / max(word_count, 1) > 0.15 or content.strip().startswith("<!DOCTYPE"):
+        return None
+
     # Detect skill from headings (not body text — avoids false positives)
     headings = re.findall(r"^#{1,3}\s+(.+)$", content, re.MULTILINE)
     heading_texts = [h.strip().lower() for h in headings]
@@ -139,7 +144,7 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
             skill = "data-analyst"
         elif re.search(r"(prototype|mockup|screen|phone frame|figma)", content_lower):
             skill = "prototype"
-        elif re.search(r"(strategy|vision|roadmap|mission|investment area)", content_lower):
+        elif re.search(r"(team identity|what we own|boundaries|team charter|capability audit)", content_lower):
             skill = "strategic-clarity"
         else:
             skill = "general"
@@ -318,6 +323,82 @@ def eval_session_metrics(session: dict) -> EvalResult | None:
             "source": "retroactive",
         },
     )
+
+
+def sync_date(target_date: str, project_filter: str = None) -> int:
+    """Sync evals for a specific date. Scans sessions modified on that date,
+    evaluates any unevaluated artifacts, and appends to the JSONL file.
+    Returns the number of new evals written."""
+    config = load_config()
+    ensure_dirs(config)
+    runner = EvalRunner()
+
+    target = datetime.strptime(target_date, "%Y-%m-%d").date()
+    sessions = []
+    for proj_dir in SESSIONS_ROOT.iterdir():
+        if not proj_dir.is_dir():
+            continue
+        if project_filter and project_filter not in proj_dir.name:
+            continue
+        for sf in proj_dir.glob("*.jsonl"):
+            if "subagent" in str(sf):
+                continue
+            mod_date = datetime.fromtimestamp(sf.stat().st_mtime).date()
+            if mod_date == target:
+                sessions.append(sf)
+
+    if not sessions:
+        return 0
+
+    results_dir = Path(config["results_dir"]).expanduser()
+    results_dir.mkdir(parents=True, exist_ok=True)
+    filepath = results_dir / f"{target_date}.jsonl"
+
+    existing_retro = set()
+    if filepath.exists():
+        for line in open(filepath):
+            try:
+                d = json.loads(line)
+                if d.get("meta", {}).get("source") == "retroactive":
+                    existing_retro.add(d.get("meta", {}).get("session_id", "") + d.get("eval_name", ""))
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+    written = 0
+    for sf in sessions:
+        session = parse_session(sf)
+        new_results = []
+
+        for artifact in session["artifacts"]:
+            result = eval_artifact(artifact, target_date, session["session_id"], runner)
+            if result:
+                new_results.append(result)
+
+        conv = eval_conversation_quality(session)
+        if conv:
+            new_results.append(conv)
+
+        metrics = eval_session_metrics(session)
+        if metrics:
+            new_results.append(metrics)
+
+        fresh = [r for r in new_results
+                 if (r.meta.get("session_id", "") + r.eval_name) not in existing_retro]
+
+        if fresh:
+            with open(filepath, "a") as f:
+                for r in fresh:
+                    f.write(json.dumps({
+                        "eval_id": r.eval_id, "timestamp": r.timestamp, "category": r.category,
+                        "tier": r.tier, "skill": r.skill, "eval_name": r.eval_name,
+                        "input_summary": r.input_summary, "scores": r.scores,
+                        "overall_score": r.overall_score, "golden_match": r.golden_match,
+                        "regression": r.regression, "duration_ms": r.duration_ms,
+                        "meta": r.meta, "error": r.error,
+                    }) + "\n")
+                    written += 1
+
+    return written
 
 
 def run_retroactive(project_filter: str = "ClientMessaging", days: int = 30, dry_run: bool = False):
