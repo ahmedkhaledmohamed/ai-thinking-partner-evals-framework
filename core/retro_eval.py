@@ -175,8 +175,9 @@ def eval_artifact(artifact: dict, session_date: str, session_id: str, runner: Ev
     # Label general docs by maturity
     if skill == "general":
         path_lower = artifact["path"].lower()
-        is_draft = any(d in path_lower for d in ["sandbox", "planning", "context", "session-state", ".claude/plans"])
-        skill = "draft" if is_draft else "artifact"
+        is_polished = any(d in path_lower for d in ["product-catalog", "topics", "strategy"])
+        is_config = any(d in path_lower for d in ["/memory/", "/commands/", "/skills/", "/.claude/"])
+        skill = "artifact" if is_polished and not is_config else "draft"
 
     # Bonus scoring
     bonus = 0.0

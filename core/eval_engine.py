@@ -137,14 +137,16 @@ class EvalRunner:
         if skill in ("unknown", "auto", ""):
             skill = self._detect_skill(text)
 
-        # Classify artifact maturity by path
+        # Skip memory files, commands, and other config-like artifacts
         path_str = str(path).lower()
-        if any(d in path_str for d in ["sandbox", "planning", "context", "session-state", ".claude/plans"]):
+        if any(d in path_str for d in ["/memory/", "/commands/", "/skills/", "/.claude/"]):
+            artifact_maturity = "draft"  # Treat as draft — not worth scoring strictly
+        elif any(d in path_str for d in ["sandbox", "planning", "context", "session-state"]):
             artifact_maturity = "draft"
         elif any(d in path_str for d in ["product-catalog", "topics", "strategy"]):
             artifact_maturity = "polished"
         else:
-            artifact_maturity = "unknown"
+            artifact_maturity = "draft"  # Default to draft — only product-catalog is polished
 
         required = SKILL_SECTIONS.get(skill, [])
         headings = self._extract_headings(text)
