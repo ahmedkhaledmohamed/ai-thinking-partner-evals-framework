@@ -137,6 +137,15 @@ class EvalRunner:
         if skill in ("unknown", "auto", ""):
             skill = self._detect_skill(text)
 
+        # Classify artifact maturity by path
+        path_str = str(path).lower()
+        if any(d in path_str for d in ["sandbox", "planning", "context", "session-state", ".claude/plans"]):
+            artifact_maturity = "draft"
+        elif any(d in path_str for d in ["product-catalog", "topics", "strategy"]):
+            artifact_maturity = "polished"
+        else:
+            artifact_maturity = "unknown"
+
         required = SKILL_SECTIONS.get(skill, [])
         headings = self._extract_headings(text)
         heading_lower = {h.lower() for h in headings}
@@ -150,7 +159,12 @@ class EvalRunner:
         if required:
             base_score = sum(section_scores.values()) / len(required)
         else:
-            base_score = self._score_general_structure(text, headings)
+            raw_structural = self._score_general_structure(text, headings)
+            if artifact_maturity == "draft":
+                # Drafts get a floor — we expect loose structure
+                base_score = 0.5 + (raw_structural * 0.5)
+            else:
+                base_score = raw_structural
 
         # Bonus for quality markers
         bonus = 0.0
@@ -168,17 +182,22 @@ class EvalRunner:
 
         duration_ms = int((monotonic() - t0) * 1000)
 
+        # Label general docs by maturity
+        display_skill = skill
+        if skill == "general":
+            display_skill = f"draft" if artifact_maturity == "draft" else "artifact"
+
         return EvalResult(
             eval_id=str(uuid.uuid4()),
             timestamp=datetime.now(timezone.utc).isoformat(),
             category="structured_doc",
             tier=1,
-            skill=skill,
+            skill=display_skill,
             eval_name="section-completeness",
             input_summary=f"{path.name} ({len(text.split())} words, {len(headings)} headings)",
             scores={**section_scores, **{f"bonus_{k}": 1.0 if v else 0.0 for k, v in bonus_hits.items()}},
             overall_score=round(overall, 3),
-            golden_match=True,  # No golden comparison for structural checks
+            golden_match=True,
             regression=regression,
             duration_ms=duration_ms,
             meta={
