@@ -111,8 +111,11 @@ def _skill_averages(results: list[EvalResult]) -> dict[str, dict]:
 def generate_daily_report(date: str, results_dir: str | None = None) -> str:
     """Generate markdown report for a single day.
 
-    Load JSONL for the date, compute category averages, identify best/worst.
+    Syncs unevaluated sessions for the target date first, then generates.
     """
+    from core.retro_eval import sync_date
+    sync_date(date)
+
     config = load_config()
     if results_dir:
         config["results_dir"] = results_dir
@@ -205,14 +208,20 @@ def generate_daily_report(date: str, results_dir: str | None = None) -> str:
 def generate_weekly_report(end_date: str, results_dir: str | None = None) -> str:
     """Generate weekly rollup. 7 daily reports aggregated.
 
-    Includes APQS trend (7 daily scores), regression alerts, improvements.
+    Syncs unevaluated sessions for each day in the window first.
     """
+    from core.retro_eval import sync_date
+
     config = load_config()
     if results_dir:
         config["results_dir"] = results_dir
 
     end = datetime.strptime(end_date, "%Y-%m-%d")
     start = end - timedelta(days=6)
+
+    for i in range(7):
+        day = (start + timedelta(days=i)).strftime("%Y-%m-%d")
+        sync_date(day)
 
     lines: list[str] = []
     lines.append(f"# Weekly AI Quality Report -- Week of {start.strftime('%Y-%m-%d')}")
